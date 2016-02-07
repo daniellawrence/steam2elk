@@ -11,13 +11,17 @@ import requests
 kill_str = r'L (.*?) - (.*?): "(.+?)<.+?" \[(.+?)\].+?"(.+?)<.+?" \[(.+?)\].+?"(.+?)"(.*)'
 kill_re = re.compile(kill_str)
 
+purchase_str = r'L (.*?) - (.*?): "(.+?)<.+?" purchased "(.+?)"'
+purchase_re = re.compile(purchase_str)
+
 
 def search_for_new_logfile(path):
     if not os.path.exists("{}".format(path)):
         return None
     all_logs = sorted(os.listdir(path))
     most_recent_log = all_logs[-1]
-    return open("{}{}".format(path, most_recent_log))
+    log_path = os.path.join(path, most_recent_log)
+    return open(log_path)
 
 
 def calc_distance(killer_position, victim_position):
@@ -36,11 +40,27 @@ def calc_distance(killer_position, victim_position):
 
 
 def process_log_line(line):
+    # ignore lines:
+    if 'server_cvar' in line:
+        return {}
+    if '" = "' in line:
+        return {}
+
+    purchase_match = purchase_re.match(line)
+    if purchase_match:
+        (daystamp, timestamp, player, item) = purchase_match.groups()
+        return {
+            'timestamp': '{} {}'.format(daystamp, timestamp),
+            'player': player,
+            'item': item
+        }
+
     if ' killed ' not in line:
+        print("DEBUG: {}".format(line))
         return {}
 
     line = line.strip()
-    m = kill_re.match(p, line)
+    m = kill_re.match(line)
 
     (daystamp, timestamp, killer, killer_position,
      victim, victim_position, weapon, raw_tags) =  m.groups()
@@ -66,7 +86,11 @@ def process_log_line(line):
     return event
 
 
-def main(log_dir, elasticsearch_url):
+def post_event_to_elasticsearch(event, elasticsearch_url):
+    return requests.post(elasticsearch_url, data=event)
+
+
+def main(log_dir, elasticsearch_url=None, interval=1):
     file_position = -1
     current_log = search_for_new_logfile(log_dir)
 
@@ -76,14 +100,21 @@ def main(log_dir, elasticsearch_url):
             event = process_log_line(line)
             if not event:
                 continue
-            requests.post(elasticsearch_url, data=event)
+
+            if elasticsearch_url:
+                post_event_to_elasticsearch(event, elasticsearch_url)
+            else:
+                # print(event)
+                pass
+
         print(".")
-        time.sleep(1)
+        time.sleep(interval)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--log-dir", type=str)
-    parser.add_argument("-e", "--elasticsearch-url", type=str)
+    parser.add_argument("-d", "--log-dir", type=str, required=True)
+    parser.add_argument("-e", "--elasticsearch-url", type=str, default=None)
+    parser.add_argument("-i", "--interval", type=int, default=1)
     args = parser.parse_args()
-    main(log_dir=args.log_dir, elasticsearch_url=args.elasticsearch_url)
+    main(log_dir=args.log_dir, elasticsearch_url=args.elasticsearch_url, interval=args.interval)
