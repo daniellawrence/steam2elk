@@ -6,6 +6,7 @@ import math
 import argparse
 import time
 import requests
+from datetime import date
 
 kill_str = r'L (.*?) - (.*?): "(.+?)<.+?" \[(.+?)\].+?"' + \
            r'(.+?)<.+?" \[(.+?)\].+?"(.+?)"(.*)'
@@ -31,19 +32,22 @@ def calc_distance(killer_position, victim_position):
     (x1, y1, z1) = [int(x) for x in killer_position.split()]
     (x2, y2, z2) = [int(x) for x in victim_position.split()]
 
-    distance = math.sqrt(
+    distance_units = math.sqrt(
         ((x1-x2)**2) + ((y1-y2)**2) + ((z1-z2)**2)
     )
+
+    # distance is measured in inches...
+    distance_meters = (distance_units * 2.540) / 100
 
     return {
         'killer_position': {'x': x1, 'y': y1, 'z': z1},
         'victim_position': {'x': x2, 'y': y2, 'z': z2},
-        'distance': distance
+        'distance_units': distance_units
+        'distance_meters': distance_meters
     }
 
 
 def process_log_line(line):
-
     if 'server_cvar' in line:
         return {}
 
@@ -55,9 +59,9 @@ def process_log_line(line):
         (daystamp, timestamp, player, item) = purchase_match.groups()
         return {
             'type': 'purchase',
-            'timestamp': '{} {}'.format(daystamp, timestamp),
             'player': player,
-            'item': item
+            'item': item,
+            'timestamp': date.today().strftime('%Y%M%dT%H%m%s%Z'),
         }
 
     assist_match = assist_re.match(line)
@@ -65,7 +69,7 @@ def process_log_line(line):
         (daystamp, timestamp, player, victim) = assist_match.groups()
         return {
             'type': 'assist',
-            'timestamp': '{} {}'.format(daystamp, timestamp),
+            'timestamp': date.today().strftime('%Y%M%dT%H%m%s%Z'),
             'player': player,
             'victim': victim
         }
@@ -84,7 +88,7 @@ def process_log_line(line):
 
         event = {
             'type': 'kill',
-            'timestamp': '{} {}'.format(daystamp, timestamp),
+            'timestamp': date.today().strftime('%Y%M%dT%H%m%s%Z'),
             'player': killer,
             'victim': victim,
             'weapon': weapon,
