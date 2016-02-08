@@ -14,6 +14,9 @@ kill_re = re.compile(kill_str)
 purchase_str = r'L (.*?) - (.*?): "(.+?)<.+?" purchased "(.+?)"'
 purchase_re = re.compile(purchase_str)
 
+assist_str = r'L (.*?) - (.*?): "(.+?)<.+?" assisted killing "(.+?)<.+?"'
+assist_re = re.compile(assist_str)
+
 
 def search_for_new_logfile(path):
     if not os.path.exists("{}".format(path)):
@@ -40,9 +43,10 @@ def calc_distance(killer_position, victim_position):
 
 
 def process_log_line(line):
-    # ignore lines:
+
     if 'server_cvar' in line:
         return {}
+
     if '" = "' in line:
         return {}
 
@@ -50,40 +54,44 @@ def process_log_line(line):
     if purchase_match:
         (daystamp, timestamp, player, item) = purchase_match.groups()
         return {
+            'type': 'purchase',
             'timestamp': '{} {}'.format(daystamp, timestamp),
             'player': player,
             'item': item
         }
 
-    if ' killed ' not in line:
-        print("DEBUG: {}".format(line))
-        return {}
+    assist_match = assist_re.match(line)
+    if assist_match:
+        (daystamp, timestamp, player, victim) = assist_match.groups()
+        return {
+            'type': 'assist',
+            'timestamp': '{} {}'.format(daystamp, timestamp),
+            'player': player,
+            'victim': victim
+        }
 
-    line = line.strip()
-    m = kill_re.match(line)
-
-    (daystamp, timestamp, killer, killer_position,
-     victim, victim_position, weapon, raw_tags) =  m.groups()
+    kill_match = kill_re.match(line)
+    if kill_match:
+        (daystamp, timestamp, killer, killer_position,
+         victim, victim_position, weapon, raw_tags) =  kill_match.groups()
     
-    tags = []
+        tags = []
+        if raw_tags:
+            raw_tags = re.match(' \((.+?)\)', raw_tags)
+            tags = list(raw_tags.groups())
+            if ' ' in tags[0]:
+                tags += tags[0].split()
 
-    if raw_tags:
-        raw_tags = re.match(' \((.+?)\)', raw_tags)
-
-
-        tags = list(raw_tags.groups())
-        if ' ' in tags[0]:
-            tags += tags[0].split()
-
-    event = {
-        'timestamp': '{} {}'.format(daystamp, timestamp),
-        'killer': killer,
-        'victim': victim,
-        'weapon': weapon,
-        'tags': tags,
-    }
-    event.update(calc_distance(killer_position, victim_position))
-    return event
+        event = {
+            'type': 'kill',
+            'timestamp': '{} {}'.format(daystamp, timestamp),
+            'player': killer,
+            'victim': victim,
+            'weapon': weapon,
+            'tags': tags,
+        }
+        event.update(calc_distance(killer_position, victim_position))
+        return event
 
 
 def post_event_to_elasticsearch(event, elasticsearch_url):
@@ -104,7 +112,7 @@ def main(log_dir, elasticsearch_url=None, interval=1):
             if elasticsearch_url:
                 post_event_to_elasticsearch(event, elasticsearch_url)
             else:
-                # print(event)
+                print(event)
                 pass
 
         print(".")
