@@ -7,8 +7,8 @@ import argparse
 import time
 import requests
 
-
-kill_str = r'L (.*?) - (.*?): "(.+?)<.+?" \[(.+?)\].+?"(.+?)<.+?" \[(.+?)\].+?"(.+?)"(.*)'
+kill_str = r'L (.*?) - (.*?): "(.+?)<.+?" \[(.+?)\].+?"' + \
+           r'(.+?)<.+?" \[(.+?)\].+?"(.+?)"(.*)'
 kill_re = re.compile(kill_str)
 
 purchase_str = r'L (.*?) - (.*?): "(.+?)<.+?" purchased "(.+?)"'
@@ -73,8 +73,8 @@ def process_log_line(line):
     kill_match = kill_re.match(line)
     if kill_match:
         (daystamp, timestamp, killer, killer_position,
-         victim, victim_position, weapon, raw_tags) =  kill_match.groups()
-    
+         victim, victim_position, weapon, raw_tags) = kill_match.groups()
+
         tags = []
         if raw_tags:
             raw_tags = re.match(' \((.+?)\)', raw_tags)
@@ -99,7 +99,6 @@ def post_event_to_elasticsearch(event, elasticsearch_url):
 
 
 def main(log_dir, elasticsearch_url=None, interval=1):
-    file_position = -1
     current_log = search_for_new_logfile(log_dir)
 
     while True:
@@ -125,4 +124,5 @@ if __name__ == '__main__':
     parser.add_argument("-e", "--elasticsearch-url", type=str, default=None)
     parser.add_argument("-i", "--interval", type=int, default=1)
     args = parser.parse_args()
-    main(log_dir=args.log_dir, elasticsearch_url=args.elasticsearch_url, interval=args.interval)
+    main(log_dir=args.log_dir, elasticsearch_url=args.elasticsearch_url,
+         interval=args.interval)
