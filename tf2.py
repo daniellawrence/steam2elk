@@ -10,6 +10,7 @@ import collections
 import json
 from datetime import date
 
+
 DATE_TIME = "(?P<date>.+?) - (?P<time>.*):"
 PLAYER = '"(?P<player_name>.+?)<(?P<player_id>\\d+)><(?P<player_steam>.+?)><(?P<player_team>.+?)>"'
 PLAYER_ATTACKER = PLAYER.replace('player', 'attacker')
@@ -227,9 +228,14 @@ def process_log_line(line):
         if m:
             return m.groupdict()
 
-    raise Exception("lulz: >>{}<<".format(line))
+    # raise Exception("lulz: >>{}<<".format(line))
 
-    # return requests.post(elasticsearch_url, data=event)
+
+def post_event_to_elasticsearch(event, elasticsearch_url):
+    r = requests.post(elasticsearch_url, auth=('bb', 'bb'), data=json.dumps(event))
+    print(r)
+    print(r.text)
+    return r
 
 
 def main(log_dir, elasticsearch_url=None, interval=1):
@@ -241,17 +247,18 @@ def main(log_dir, elasticsearch_url=None, interval=1):
         new_lines = current_log.readlines()
         for line in new_lines:
             event = process_log_line(line)
+
             if not event:
                 continue
 
             if elasticsearch_url:
+                print("posting event to elasticsearch")
                 post_event_to_elasticsearch(event, elasticsearch_url)
             else:
                 print(json.dumps(event))
                 pass
 
         print("... processed {0} lines".format(len(new_lines)))
-        break
         time.sleep(interval)
 
 
