@@ -231,11 +231,11 @@ def process_log_line(line):
     # raise Exception("lulz: >>{}<<".format(line))
 
 
-def post_event_to_elasticsearch(event, elasticsearch_url):
-    r = requests.post(elasticsearch_url, auth=('bb', 'bb'), data=json.dumps(event))
-    print(r)
-    print(r.text)
-    return r
+def post_event_to_elasticsearch(events, elasticsearch_url):
+    header = """{"index" : {"_index":"index_tf2","_type":"type_kill"} }\n"""
+    event_str = "%s\n" % "\n".join([header + json.dumps(e) for e in events])
+    r = requests.post(elasticsearch_url + "/_bulk", auth=('bb', 'bb'), data=event_str)
+    # print("{}".format(r))
 
 
 def main(log_dir, elasticsearch_url=None, interval=1):
@@ -245,20 +245,20 @@ def main(log_dir, elasticsearch_url=None, interval=1):
 
     while True:
         new_lines = current_log.readlines()
+        events = []
         for line in new_lines:
             event = process_log_line(line)
 
             if not event:
                 continue
+            events.append(event)
 
+        if events:
             if elasticsearch_url:
-                print("posting event to elasticsearch")
-                post_event_to_elasticsearch(event, elasticsearch_url)
-            else:
-                print(json.dumps(event))
-                pass
+                print("posting {} events to elasticsearch".format(len(events)))
+                post_event_to_elasticsearch(events, elasticsearch_url)
 
-        print("... processed {0} lines".format(len(new_lines)))
+        print("... processed {0} lines... {1}".format(len(new_lines), current_log))
         time.sleep(interval)
 
 
@@ -266,7 +266,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--log-dir", type=str, required=None)
     parser.add_argument("-e", "--elasticsearch-url", type=str, default=None)
-    parser.add_argument("-i", "--interval", type=int, default=1)
+    parser.add_argument("-i", "--interval", type=int, default=5)
     args = parser.parse_args()
 
     # Allow easy testing.
