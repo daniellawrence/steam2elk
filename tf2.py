@@ -44,6 +44,8 @@ ASSIST_KILL = '"kill assist"'
 
 healing_re = re.compile(HEALING)
 
+role_map = {}
+
 # -------------------------------------------------------------------------
 
 # Team switching
@@ -115,18 +117,18 @@ killobject_string = "L {DATE_TIME} {PLAYER_ATTACKER} triggered {TRIGGER_NAME} {O
 killobject_re = re.compile(killobject_string)
 
 re_map = [
-    killobject_re,
-    team_switch_re,
-    role_switch_re,
-    trigger_re,
-    trigger_player_re,
-    killed_re,
-    kill_assist_re,
-    captureblocked_re,
-    kill_custom_re,
-    suicide_re,
-    medic_death_re,
-    trigger_self_re,
+    {'killobject':  killobject_re},
+    {'team_switch': team_switch_re},
+    {'role_switch': role_switch_re},
+    {'other': trigger_re},
+    {'trigger_player': trigger_player_re},
+    {'kill': killed_re},
+    {'kill_assist': kill_assist_re},
+    {'captureblocked': captureblocked_re},
+    {'kill_custom': kill_custom_re},
+    {'suicide': suicide_re},
+    {'medic_death': medic_death_re},
+    {'trigger_self': trigger_self_re},
 ]
 
 
@@ -223,10 +225,36 @@ def process_log_line(line):
     line = line.strip()
 
     m = None
-    for re in re_map:
+    for re_dict in re_map:
+        re_name = re_dict.keys()[0]
+        re = re_dict.values()[0]
         m = re.match(line)
         if m:
-            return m.groupdict()
+            d = m.groupdict()
+            d['event_type'] = re_name
+
+            if d['event_type'] == 'role_switch':
+               role_map[d.get('player_name', '')] = d.get('role', '')
+
+            for p in ['player', 'victim', 'acttacker']:
+                if "{}_name".format(p) in d and "{}_role" not in d:
+                   d['{}_role'.format(p)] = role_map.get(d.get('{}_name'.format(p)))
+
+            for num in ['ubercharge', 'healing']:
+                if num in d:
+                    try:
+                        d[num] = float(d.get(num, 0))
+                    except:
+                        pass
+
+            if 'date' in d:
+                # 03/03/2016 into 2016-03-03
+                (DD, MM, YYYY) = d.get('date', '').split('/')
+                d['date'] = "{0}-{1}-{2}".format(YYYY, MM, DD)
+                d['date_time'] = "{0} {1}".format(d['date'], d['time'])
+                d['simple_time'] = d['time'].replace(':', '')
+                d['simple_date'] = '{0}{1}{2}T{3}'.format(YYYY, MM, DD, d['time'].replace(':', ''))
+            return d
 
     # raise Exception("lulz: >>{}<<".format(line))
 
@@ -251,7 +279,12 @@ def main(log_dir, elasticsearch_url=None, interval=1):
 
             if not event:
                 continue
+
             events.append(event)
+
+        if len(events) > 50:
+            print("Skipping events {}".format(len(events)))
+            continue
 
         if events:
             if elasticsearch_url:
@@ -273,7 +306,8 @@ if __name__ == '__main__':
     if not args.log_dir:
         args.log_dir = "tests/"
 
-    main(log_dir=args.log_dir,
-         elasticsearch_url=args.elasticsearch_url,
-         interval=args.interval
+    main(
+        log_dir=args.log_dir,
+        elasticsearch_url=args.elasticsearch_url,
+        interval=args.interval
     )
